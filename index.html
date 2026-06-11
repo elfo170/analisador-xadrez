@@ -1,0 +1,943 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Análise de Partida</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/chessboard-js/1.0.0/chessboard-1.0.0.min.css">
+<style>
+  :root{
+    --bg:#15110d; --surface:#1f1914; --surface2:#28201a; --line:#3a2f26;
+    --text:#efe7db; --muted:#a89685; --amber:#e3a64e;
+    --sq-light:#e7d3ae; --sq-dark:#9a6b3f;
+    --c-brilhante:#1fbc9c; --c-otimo:#5a9fd6; --c-melhor:#81b64c; --c-excelente:#95bb4a;
+    --c-bom:#9aad7f; --c-livro:#c8a06c; --c-imprecisao:#e8b54e; --c-erro:#e07c2e;
+    --c-gafe:#e84d3d; --c-perdido:#e66e5a;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;}
+  body{max-width:560px;margin:0 auto;padding:12px 12px 40px;}
+  h1{font-family:Georgia,'Times New Roman',serif;font-size:22px;font-weight:700;
+    margin:6px 0 2px;letter-spacing:.3px;}
+  h1 .knight{color:var(--amber);}
+  .sub{color:var(--muted);font-size:12px;margin:0 0 14px;}
+  .chip{display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);
+    border:1px solid var(--line);border-radius:999px;padding:3px 10px;margin-top:6px;}
+  .chip .dot{width:7px;height:7px;border-radius:50%;background:#5b5147;}
+  .chip.on .dot{background:var(--c-melhor);}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:12px;
+    padding:14px;margin-bottom:12px;}
+  textarea{width:100%;min-height:140px;background:#120e0a;color:var(--text);
+    border:1px solid var(--line);border-radius:8px;padding:10px;font-family:ui-monospace,Menlo,Consolas,monospace;
+    font-size:12px;resize:vertical;}
+  textarea:focus{outline:2px solid var(--amber);outline-offset:1px;}
+  .row{display:flex;gap:8px;margin-top:10px;align-items:center;}
+  select{background:var(--surface2);color:var(--text);border:1px solid var(--line);
+    border-radius:8px;padding:10px;font-size:14px;flex:1;}
+  .btn{background:var(--amber);color:#241a0d;border:0;border-radius:8px;padding:12px 16px;
+    font-size:15px;font-weight:700;flex:2;cursor:pointer;min-height:46px;touch-action:manipulation;}
+  .btn:disabled{opacity:.5;}
+  .btn-ghost{background:transparent;color:var(--amber);border:1px solid var(--line);
+    font-weight:600;}
+  .linklike{background:none;border:0;color:var(--amber);font-size:13px;padding:8px 0 0;
+    cursor:pointer;text-decoration:underline;}
+  .err{display:none;margin-top:10px;background:#3a1714;border:1px solid #6e2a23;color:#f3b9b1;
+    border-radius:8px;padding:10px;font-size:13px;line-height:1.45;}
+  /* progress */
+  #progress{display:none;}
+  .pbar{height:8px;background:var(--surface2);border-radius:99px;overflow:hidden;margin-top:8px;}
+  .pbar>div{height:100%;width:0%;background:var(--amber);transition:width .25s;}
+  .plabel{font-size:12px;color:var(--muted);margin-top:6px;}
+  /* players & summary */
+  .players{display:flex;gap:8px;}
+  .pcard{flex:1;background:var(--surface2);border-radius:10px;padding:10px;text-align:center;}
+  .pcard .nm{font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .pcard .elo{font-size:11px;color:var(--muted);}
+  .pcard .acc{font-family:Georgia,serif;font-size:28px;font-weight:700;color:var(--amber);margin-top:4px;}
+  .pcard .acclbl{font-size:10px;color:var(--muted);letter-spacing:.8px;text-transform:uppercase;}
+  .resline{text-align:center;color:var(--muted);font-size:12px;margin-top:8px;}
+  table.counts{width:100%;border-collapse:collapse;margin-top:10px;font-size:13px;}
+  table.counts td{padding:5px 4px;border-top:1px solid var(--line);}
+  table.counts td.num{text-align:center;width:52px;font-variant-numeric:tabular-nums;font-weight:700;}
+  .sym{display:inline-flex;width:20px;height:20px;border-radius:50%;align-items:center;
+    justify-content:center;font-size:10px;font-weight:800;color:#1b1410;margin-right:8px;vertical-align:middle;}
+  /* board area */
+  .boardrow{display:flex;gap:8px;align-items:stretch;}
+  #evalbar{width:14px;border-radius:7px;overflow:hidden;background:#2b2118;border:1px solid var(--line);
+    display:flex;flex-direction:column;justify-content:flex-end;}
+  #evalbarFill{background:#f1e7d6;width:100%;height:50%;transition:height .25s;}
+  #boardCol{flex:1;min-width:0;}
+  #board{width:100%;touch-action:pan-y;}
+  #board .square-55d63{position:relative;}
+  .white-1e1d7{background-color:var(--sq-light)!important;color:var(--sq-dark)!important;}
+  .black-3c85d{background-color:var(--sq-dark)!important;color:var(--sq-light)!important;}
+  .hlsq{box-shadow:inset 0 0 0 3px rgba(227,166,78,.9)!important;}
+  .cls-badge{position:absolute;top:-5px;right:-5px;width:22px;height:22px;border-radius:50%;
+    display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;
+    color:#1b1410;z-index:9;box-shadow:0 1px 4px rgba(0,0,0,.6);pointer-events:none;}
+  .evaltxt{font-family:Georgia,serif;font-size:18px;font-weight:700;text-align:center;margin:8px 0 2px;}
+  /* controls */
+  .controls{display:flex;gap:6px;margin-top:10px;}
+  .controls button{flex:1;min-height:46px;background:var(--surface2);color:var(--text);
+    border:1px solid var(--line);border-radius:8px;font-size:18px;cursor:pointer;touch-action:manipulation;}
+  .controls button:active{background:#352a21;}
+  .movecounter{text-align:center;font-size:12px;color:var(--muted);margin-top:6px;}
+  /* insight */
+  #insight{border-left:3px solid var(--amber);}
+  #insight .mv{font-family:ui-monospace,Menlo,monospace;font-size:16px;font-weight:700;}
+  #insight .lbl{display:inline-block;border-radius:6px;padding:2px 8px;font-size:12px;font-weight:800;
+    color:#1b1410;margin-left:8px;vertical-align:middle;}
+  #insight .txt{font-size:13px;color:#d8cbbb;line-height:1.5;margin-top:8px;}
+  /* graph */
+  #graphCard{padding:10px;}
+  #graph{width:100%;height:110px;display:block;border-radius:8px;}
+  .gcap{font-size:11px;color:var(--muted);margin-top:6px;text-align:center;}
+  /* move list */
+  .mrow{display:grid;grid-template-columns:34px 1fr 1fr;gap:6px;padding:3px 0;align-items:center;}
+  .mn{color:var(--muted);font-size:12px;text-align:right;padding-right:2px;}
+  .mchip{display:flex;align-items:center;gap:6px;background:var(--surface2);border:1px solid transparent;
+    border-radius:6px;padding:6px 8px;font-family:ui-monospace,Menlo,monospace;font-size:13px;
+    cursor:pointer;min-height:34px;overflow:hidden;}
+  .mchip.cur{border-color:var(--amber);}
+  .mchip .ms{width:16px;height:16px;border-radius:50%;font-size:8px;display:inline-flex;
+    align-items:center;justify-content:center;font-weight:800;color:#1b1410;flex:none;}
+  .hidden{display:none!important;}
+  .sect-title{font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);
+    margin:0 0 8px;}
+</style>
+</head>
+<body>
+
+<h1><span class="knight">♞</span> Análise de Partida</h1>
+<p class="sub">Cole o PGN do Chess.com e revise lance a lance</p>
+<span class="chip" id="engineChip"><span class="dot"></span><span id="engineName">Motor: aguardando análise</span></span>
+
+<div class="card" id="inputCard" style="margin-top:12px;">
+  <textarea id="pgnInput" placeholder='[Event "..."]&#10;1. d4 d5 2. ...&#10;&#10;Cole aqui o PGN completo (com ou sem cabeçalhos)'></textarea>
+  <div class="row">
+    <select id="depthSel">
+      <option value="10">Rápida (prof. 10)</option>
+      <option value="12" selected>Padrão (prof. 12)</option>
+      <option value="15">Profunda (prof. 15)</option>
+    </select>
+    <button class="btn" id="btnAnalyze">Analisar partida</button>
+  </div>
+  <button class="linklike" id="btnExample">Usar partida de exemplo</button>
+  <div class="err" id="errBox"></div>
+</div>
+
+<div class="card" id="progress">
+  <div class="plabel" id="plabel">Preparando análise…</div>
+  <div class="pbar"><div id="pfill"></div></div>
+</div>
+
+<div id="results" class="hidden">
+
+  <div class="card" id="summaryCard">
+    <div class="players">
+      <div class="pcard">
+        <div class="nm" id="wName">Brancas</div>
+        <div class="elo" id="wElo"></div>
+        <div class="acc" id="wAcc">–</div>
+        <div class="acclbl">Precisão</div>
+      </div>
+      <div class="pcard">
+        <div class="nm" id="bName">Pretas</div>
+        <div class="elo" id="bElo"></div>
+        <div class="acc" id="bAcc">–</div>
+        <div class="acclbl">Precisão</div>
+      </div>
+    </div>
+    <div class="resline" id="resLine"></div>
+    <table class="counts" id="countsTable"></table>
+  </div>
+
+  <div class="card">
+    <div class="evaltxt" id="evalTxt">0.0</div>
+    <div class="boardrow">
+      <div id="evalbar"><div id="evalbarFill"></div></div>
+      <div id="boardCol"><div id="board"></div></div>
+    </div>
+    <div class="controls">
+      <button id="btnFirst" aria-label="Início">⏮</button>
+      <button id="btnPrev" aria-label="Anterior">◀</button>
+      <button id="btnNext" aria-label="Próximo">▶</button>
+      <button id="btnLast" aria-label="Fim">⏭</button>
+      <button id="btnFlip" aria-label="Girar tabuleiro">⟲</button>
+    </div>
+    <div class="movecounter" id="moveCounter"></div>
+  </div>
+
+  <div class="card" id="insight">
+    <span class="mv" id="insMove">Posição inicial</span>
+    <span class="lbl hidden" id="insLbl"></span>
+    <div class="txt" id="insTxt">Use as setas para navegar pela partida.</div>
+  </div>
+
+  <div class="card" id="graphCard">
+    <p class="sect-title">Avaliação ao longo da partida</p>
+    <canvas id="graph"></canvas>
+    <div class="gcap">Toque no gráfico para pular para o lance</div>
+  </div>
+
+  <div class="card">
+    <p class="sect-title">Lances</p>
+    <div id="moveList"></div>
+  </div>
+
+  <button class="btn btn-ghost" id="btnNew" style="width:100%;">Nova análise</button>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chessboard-js/1.0.0/chessboard-1.0.0.min.js"></script>
+<script>
+"use strict";
+
+/* ============ Constantes de classificação ============ */
+const CLS = {
+  brilhante:{key:'brilhante',label:'Brilhante',sym:'!!',color:'var(--c-brilhante)',hex:'#1fbc9c'},
+  otimo:{key:'otimo',label:'Ótimo',sym:'!',color:'var(--c-otimo)',hex:'#5a9fd6'},
+  melhor:{key:'melhor',label:'Melhor',sym:'★',color:'var(--c-melhor)',hex:'#81b64c'},
+  excelente:{key:'excelente',label:'Excelente',sym:'✓',color:'var(--c-excelente)',hex:'#95bb4a'},
+  bom:{key:'bom',label:'Bom',sym:'·',color:'var(--c-bom)',hex:'#9aad7f'},
+  livro:{key:'livro',label:'Livro',sym:'≡',color:'var(--c-livro)',hex:'#c8a06c'},
+  imprecisao:{key:'imprecisao',label:'Imprecisão',sym:'?!',color:'var(--c-imprecisao)',hex:'#e8b54e'},
+  erro:{key:'erro',label:'Erro',sym:'?',color:'var(--c-erro)',hex:'#e07c2e'},
+  gafe:{key:'gafe',label:'Gafe',sym:'??',color:'var(--c-gafe)',hex:'#e84d3d'},
+  perdido:{key:'perdido',label:'Perdido',sym:'✗',color:'var(--c-perdido)',hex:'#e66e5a'}
+};
+const CLS_ORDER = ['brilhante','otimo','melhor','excelente','bom','livro','imprecisao','erro','gafe','perdido'];
+const PVAL = {p:1,n:3,b:3,r:5,q:9,k:0};
+const MATE_BASE = 100000;
+
+/* ============ Estado global ============ */
+let headers = {};
+let moves = [];        // {san, from, to, piece, color, captured, promotion, uci}
+let fens = [];         // fens.length = moves.length + 1
+let evals = [];        // {cp (POV brancas), best (uci|null)} por posição
+let bestSan = [];      // SAN do melhor lance por posição
+let cls = [];          // classificação por lance
+let accuracy = {w:null,b:null};
+let curPly = 0;
+let board = null;
+let providerName = null;
+let analyzing = false;
+
+/* ============ Utilidades ============ */
+const $id = id => document.getElementById(id);
+const clampCp = c => Math.max(-1000, Math.min(1000, c));
+
+function winPct(cpWhite){
+  if (cpWhite >= MATE_BASE - 10000) return 100;
+  if (cpWhite <= -(MATE_BASE - 10000)) return 0;
+  const c = clampCp(cpWhite);
+  return 50 + 50 * (2 / (1 + Math.exp(-0.00368208 * c)) - 1);
+}
+function fmtEval(cp){
+  if (cp >= MATE_BASE - 10000){ const n = Math.round((MATE_BASE - cp)/100); return n===0 ? '#' : '+M'+n; }
+  if (cp <= -(MATE_BASE - 10000)){ const n = Math.round((MATE_BASE + cp)/100); return n===0 ? '#' : '−M'+n; }
+  const v = cp/100;
+  return (v>0?'+':'') + v.toFixed(1);
+}
+function normalizeBestUci(fen, best){
+  if (!best) return null;
+  best = String(best).trim();
+  if (/^[a-h][1-8][a-h][1-8][qrbn]?$/i.test(best)) return best.toLowerCase();
+  try {
+    const g = new Chess(fen);
+    const r = g.move(best.replace(/[?!+#]+$/,''), {sloppy:true});
+    if (r) return r.from + r.to + (r.promotion||'');
+  } catch(e){}
+  return null;
+}
+function fetchTimeout(url, opts, ms){
+  const c = new AbortController();
+  const t = setTimeout(()=>c.abort(), ms);
+  return fetch(url, Object.assign({}, opts, {signal:c.signal}))
+    .then(r => { if(!r.ok) throw new Error('http '+r.status); return r; })
+    .finally(()=>clearTimeout(t));
+}
+
+/* ============ Parser de PGN ============ */
+function parsePgn(raw){
+  const hdrs = {};
+  raw.replace(/\[(\w+)\s+"([^"]*)"\]/g, (m,k,v)=>{ hdrs[k]=v; return ''; });
+  let body = raw.replace(/\[[^\]]*\]/g, ' ')
+                .replace(/\u00a0/g,' ')
+                .replace(/\{[^}]*\}/g,' ');
+  let prev;
+  do { prev = body; body = body.replace(/\([^()]*\)/g,' '); } while (body !== prev);
+  body = body.replace(/\$\d+/g,' ')
+             .replace(/\b0-0-0\b/g,'O-O-O')
+             .replace(/\b0-0\b/g,'O-O');
+  const tokens = body.split(/\s+/)
+    .map(t => t.replace(/^\d+\.+/,''))
+    .filter(t => t && !/^(1-0|0-1|1\/2-1\/2|\*)$/.test(t) && !/^\.+$/.test(t));
+
+  const game = new Chess();
+  const mvs = [];
+  for (let i=0;i<tokens.length;i++){
+    const san = tokens[i].replace(/[?!]+$/,'');
+    const r = game.move(san, {sloppy:true});
+    if (!r){
+      const moveNo = Math.floor(i/2)+1;
+      const side = i%2===0 ? '' : '…';
+      throw new Error('Lance inválido: '+moveNo+'.'+side+' "'+tokens[i]+'". '+
+        'Verifique a notação — se há duas peças iguais que podem ir à mesma casa, '+
+        'é preciso desambiguar (ex.: Qag5 em vez de Qg5).');
+    }
+    mvs.push({
+      san:r.san, from:r.from, to:r.to, piece:r.piece, color:r.color,
+      captured:r.captured||null, promotion:r.promotion||null,
+      uci:r.from + r.to + (r.promotion||'')
+    });
+  }
+  if (mvs.length === 0) throw new Error('Nenhum lance encontrado no PGN. Cole a partida completa.');
+
+  const g2 = new Chess();
+  const fs = [g2.fen()];
+  for (const m of mvs){ g2.move(m.san, {sloppy:true}); fs.push(g2.fen()); }
+  return {headers:hdrs, moves:mvs, fens:fs};
+}
+
+/* ============ Provedores de avaliação ============ */
+async function evalChessApi(fen, depth){
+  const r = await fetchTimeout('https://chess-api.com/v1', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({fen:fen, depth:Math.min(depth,18)})
+  }, 12000);
+  const d = await r.json();
+  if (typeof d.eval !== 'number' && d.mate == null) throw new Error('payload inválido');
+  let cp;
+  if (d.mate != null) cp = (d.mate>0?1:-1) * (MATE_BASE - Math.abs(d.mate)*100);
+  else cp = Math.round(d.eval * 100);
+  let best = d.move || null;
+  if (!best && d.from && d.to) best = d.from + d.to + (d.promotion||'');
+  return {cp:cp, best:best};
+}
+async function evalSfOnline(fen, depth){
+  const u = 'https://stockfish.online/api/s/v2.php?fen='+encodeURIComponent(fen)+'&depth='+Math.min(depth,15);
+  const r = await fetchTimeout(u, {}, 15000);
+  const d = await r.json();
+  if (!d || d.success !== true) throw new Error('falha sf.online');
+  let cp;
+  if (d.mate != null) cp = (d.mate>0?1:-1) * (MATE_BASE - Math.abs(d.mate)*100);
+  else cp = Math.round((d.evaluation||0) * 100);
+  let best = null;
+  if (d.bestmove){ const p = String(d.bestmove).trim().split(/\s+/); best = p[0]==='bestmove' ? (p[1]||null) : p[0]; }
+  return {cp:cp, best:best};
+}
+
+/* ---- Stockfish 18 lite WASM (motor principal): Web Worker local ---- */
+const ENGINE_JS = 'engine/stockfish-18-lite-single.js';
+let engineReady = null;
+const engineListeners = [];
+function ensureEngine(){
+  if (engineReady) return engineReady;
+  engineReady = new Promise((resolve, reject)=>{
+    let w;
+    try { w = new Worker(ENGINE_JS); }
+    catch(e){ engineReady = null; reject(e); return; }
+    let resolved = false;
+    w.onerror = ()=>{ if(!resolved){ resolved = true; engineReady = null; reject(new Error('Falha ao carregar o motor WASM')); } };
+    w.onmessage = e=>{
+      const d = (e && e.data !== undefined) ? e.data : e;
+      engineListeners.slice().forEach(fn => { try{ fn(String(d)); }catch(err){} });
+    };
+    const api = {
+      send: cmd => w.postMessage(cmd),
+      on: fn => engineListeners.push(fn),
+      off: fn => { const i = engineListeners.indexOf(fn); if (i>=0) engineListeners.splice(i,1); }
+    };
+    const onReady = line => {
+      if (line.indexOf('uciok') !== -1 && !resolved){ resolved = true; api.off(onReady); resolve(api); }
+    };
+    api.on(onReady);
+    api.send('uci');
+    setTimeout(()=>{ if(!resolved){ resolved = true; api.off(onReady); engineReady = null;
+      reject(new Error('Tempo esgotado carregando o motor')); } }, 60000);
+  });
+  return engineReady;
+}
+const localQueue = (function(){
+  let chain = Promise.resolve();
+  return fn => { const p = chain.then(fn, fn); chain = p.catch(()=>{}); return p; };
+})();
+function localEvalMPV(fen, depth, multipv){
+  return localQueue(async function(){
+    const eng = await ensureEngine();
+    return new Promise(function(resolve){
+      const infos = {};
+      const stmBlack = fen.split(' ')[1] === 'b';
+      const onMsg = function(line){
+        if (line.indexOf('info') === 0 && line.indexOf(' score ') !== -1 && line.indexOf(' pv ') !== -1){
+          const mp = line.match(/multipv (\d+)/);
+          const k = mp ? parseInt(mp[1], 10) : 1;
+          const sc = line.match(/score (cp|mate) (-?\d+)/);
+          let cp = 0;
+          if (sc){
+            if (sc[1] === 'cp') cp = parseInt(sc[2], 10);
+            else { const n = parseInt(sc[2], 10); cp = (n>0?1:-1) * (MATE_BASE - Math.abs(n)*100); }
+          }
+          const pv = line.split(' pv ')[1].trim().split(/\s+/).slice(0, 8);
+          infos[k] = {cp:cp, pv:pv};
+        }
+        if (line.indexOf('bestmove') === 0){
+          eng.off(onMsg);
+          const lines = Object.keys(infos).sort(function(a,b){return a-b;}).map(function(k){
+            const it = infos[k];
+            return { uci: it.pv[0] || null, cp: stmBlack ? -it.cp : it.cp, pv: it.pv };  // POV brancas
+          }).filter(function(L){ return L.uci; });
+          const bm = line.split(/\s+/)[1];
+          const best = (bm && bm !== '(none)') ? bm : (lines[0] ? lines[0].uci : null);
+          resolve({
+            cp: lines[0] ? lines[0].cp : 0,
+            best: best,
+            pv: lines[0] ? lines[0].pv : [],
+            lines: (multipv || 1) > 1 ? lines : undefined
+          });
+        }
+      };
+      eng.on(onMsg);
+      eng.send('setoption name MultiPV value ' + (multipv || 1));
+      eng.send('position fen ' + fen);
+      eng.send('go depth ' + depth);
+    });
+  });
+}
+function localEval(fen, depth){ return localEvalMPV(fen, depth, 1); }
+
+function setEngineChip(name){
+  const map = {
+    'chess-api':'Motor: Stockfish via chess-api.com',
+    'sf-online':'Motor: Stockfish via stockfish.online',
+    'local':'Motor: Stockfish 18 lite (WASM local)'
+  };
+  $id('engineName').textContent = map[name] || 'Motor: aguardando análise';
+  $id('engineChip').classList.toggle('on', !!name);
+}
+
+let localDead = false;
+async function getEval(fen, depth){
+  // motor principal: Stockfish WASM local (determinístico)
+  if (!localDead){
+    try {
+      const r = await localEval(fen, depth);
+      if (providerName !== 'local'){ providerName = 'local'; setEngineChip('local'); }
+      return r;
+    } catch(e){ localDead = true; }
+  }
+  // fallback: APIs externas
+  const order = providerName === 'sf-online'
+    ? [['sf-online',evalSfOnline],['chess-api',evalChessApi]]
+    : [['chess-api',evalChessApi],['sf-online',evalSfOnline]];
+  for (const pair of order){
+    for (let a=0; a<2; a++){
+      try {
+        const r = await pair[1](fen, depth);
+        if (providerName !== pair[0]){ providerName = pair[0]; setEngineChip(pair[0]); }
+        return r;
+      } catch(e){ /* tenta de novo / próximo */ }
+    }
+  }
+  throw new Error('nenhum motor disponível (verifique a conexão)');
+}
+
+/* ============ Análise ============ */
+async function analyze(depth){
+  const N = fens.length;
+  evals = new Array(N).fill(null);
+
+  // posições terminais não vão ao motor
+  const todo = [];
+  for (let j=0; j<N; j++){
+    const g = new Chess(fens[j]);
+    if (g.game_over()){
+      if (g.in_checkmate()){
+        evals[j] = {cp: g.turn()==='w' ? -MATE_BASE : MATE_BASE, best:null};
+      } else {
+        evals[j] = {cp:0, best:null};
+      }
+    } else {
+      todo.push(j);
+    }
+  }
+
+  let done = 0;
+  const total = todo.length;
+  const updateProgress = ()=>{
+    $id('pfill').style.width = Math.round(100*done/Math.max(1,total)) + '%';
+    $id('plabel').textContent = 'Avaliando posições: ' + done + ' / ' + total +
+      (providerName && providerName!=='local' ? ' (via API — fallback)' : '');
+  };
+  updateProgress();
+
+  $id('plabel').textContent = 'Carregando o motor (primeira vez baixa ~7 MB)\u2026';
+  // trava o provedor avaliando a primeira posição antes do pool paralelo
+  if (todo.length){
+    const j0 = todo[0];
+    try {
+      evals[j0] = await getEval(fens[j0], depth);
+      evals[j0].best = normalizeBestUci(fens[j0], evals[j0].best);
+    } catch(e){ evals[j0] = {cp:0, best:null, failed:true}; }
+    done++; updateProgress();
+  }
+
+  let idx = 1;
+  async function worker(){
+    while (idx < todo.length){
+      const j = todo[idx++];
+      try {
+        evals[j] = await getEval(fens[j], depth);
+        evals[j].best = normalizeBestUci(fens[j], evals[j].best);
+      }
+      catch(e){ evals[j] = {cp:0, best:null, failed:true}; }
+      done++; updateProgress();
+    }
+  }
+  const pool = [worker(), worker(), worker()];
+  await Promise.all(pool);
+
+  // SAN do melhor lance por posição
+  bestSan = new Array(N).fill(null);
+  for (let j=0; j<N; j++){
+    const b = evals[j] && evals[j].best;
+    if (!b || b.length < 4) continue;
+    try {
+      const g = new Chess(fens[j]);
+      const r = g.move({from:b.slice(0,2), to:b.slice(2,4), promotion:b[4]||undefined});
+      if (r) bestSan[j] = r.san;
+    } catch(e){}
+  }
+
+  classifyAll();
+  computeAccuracy();
+}
+
+function isSacrifice(fenAfter, mv){
+  const v = PVAL[mv.piece];
+  if (v < 3) return false;
+  const cv = mv.captured ? PVAL[mv.captured] : 0;
+  if (v - cv < 2) return false;
+  let g;
+  try { g = new Chess(fenAfter); } catch(e){ return false; }
+  const caps = g.moves({verbose:true}).filter(m => m.to === mv.to && m.captured);
+  if (!caps.length) return false;
+  let bestOppNet = -Infinity;
+  for (const c of caps){
+    const g2 = new Chess(fenAfter);
+    g2.move(c);
+    const recaps = g2.moves({verbose:true}).filter(m => m.to === mv.to && m.captured);
+    const oppLoss = recaps.length ? PVAL[c.piece] : 0;
+    const net = v - oppLoss;
+    if (net > bestOppNet) bestOppNet = net;
+  }
+  return (bestOppNet - cv) >= 2;
+}
+
+function classifyAll(){
+  cls = [];
+  const mw = (cp, color) => color === 'w' ? winPct(cp) : 100 - winPct(cp);
+  for (let i=0; i<moves.length; i++){
+    const m = moves[i];
+    const wB = mw(evals[i].cp, m.color);     // % de vitória antes (POV de quem jogou)
+    const wA = mw(evals[i+1].cp, m.color);   // % depois
+    const drop = Math.max(0, wB - wA);
+    const matched = !!(evals[i].best && m.uci === evals[i].best);
+    const isMate = new Chess(fens[i+1]).in_checkmate();
+    const prev = i >= 1 ? cls[i-1] : null;
+    const prevBlunder = prev && (prev.key === 'erro' || prev.key === 'gafe');
+
+    const inBook = (i < 2 && drop < 20) || (i < 10 && drop <= 8);
+    const simpleRecapture = !!(m.captured && i >= 1 && m.to === moves[i-1].to);
+
+    let c;
+    if (isMate) c = CLS.melhor;
+    else if (inBook) c = CLS.livro;
+    else if (isSacrifice(fens[i+1], m) && drop <= 2 && wA >= 30) c = CLS.brilhante;
+    else if (matched && prevBlunder && !simpleRecapture) c = CLS.otimo;
+    else if (matched) c = CLS.melhor;
+    else if (prevBlunder && drop >= 10 && drop < 20) c = CLS.perdido;
+    else if (drop < 2) c = CLS.excelente;
+    else if (drop < 5) c = CLS.bom;
+    else if (drop < 10) c = CLS.imprecisao;
+    else if (drop < 20) c = CLS.erro;
+    else c = CLS.gafe;
+
+    cls.push({key:c.key, label:c.label, sym:c.sym, hex:c.hex, drop:drop, matched:matched, isMate:isMate});
+  }
+}
+
+function computeAccuracy(){
+  const acc = {w:[], b:[]};
+  for (let i=0; i<moves.length; i++){
+    const m = moves[i];
+    const wB = m.color==='w' ? winPct(evals[i].cp)   : 100 - winPct(evals[i].cp);
+    const wA = m.color==='w' ? winPct(evals[i+1].cp) : 100 - winPct(evals[i+1].cp);
+    const drop = Math.max(0, wB - wA);
+    let a = 103.1668 * Math.exp(-0.04354 * drop) - 3.1669;
+    a = Math.max(0, Math.min(100, a));
+    acc[m.color].push(a);
+  }
+  const mean = arr => arr.length ? arr.reduce((s,x)=>s+x,0)/arr.length : null;
+  accuracy.w = mean(acc.w);
+  accuracy.b = mean(acc.b);
+}
+
+/* ============ Tabuleiro ============ */
+function pieceDataUri(piece){
+  const glyphs = {K:'\u265A',Q:'\u265B',R:'\u265C',B:'\u265D',N:'\u265E',P:'\u265F'};
+  const isWhite = piece[0] === 'w';
+  const g = glyphs[piece[1]];
+  const fill = isWhite ? '#f6efe2' : '#23201c';
+  const stroke = isWhite ? '#23201c' : '#cfc4b2';
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 45 45">' +
+    '<text x="22.5" y="35" font-size="38" text-anchor="middle" font-family="serif" ' +
+    'fill="' + fill + '" stroke="' + stroke + '" stroke-width="1.1" paint-order="stroke">' +
+    g + '</text></svg>';
+  return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
+}
+function initBoard(){
+  if (board){ try{ board.destroy(); }catch(e){} }
+  board = Chessboard('board', {
+    position: 'start',
+    draggable: false,
+    showNotation: true,
+    pieceTheme: pieceDataUri
+  });
+}
+
+function applyOverlays(){
+  const $b = $('#board');
+  $b.find('.square-55d63').removeClass('hlsq');
+  $b.find('.cls-badge').remove();
+  if (curPly === 0) return;
+  const m = moves[curPly-1];
+  $b.find('.square-' + m.from).addClass('hlsq');
+  $b.find('.square-' + m.to).addClass('hlsq');
+  if (cls.length){
+    const c = cls[curPly-1];
+    const badge = $('<div class="cls-badge"></div>').text(c.sym).css('background', c.hex);
+    $b.find('.square-' + m.to).append(badge);
+  }
+}
+
+/* ============ Renderização ============ */
+function moveLabel(i){
+  const n = Math.floor(i/2) + 1;
+  return moves[i].color === 'w' ? (n + '. ' + moves[i].san) : (n + '… ' + moves[i].san);
+}
+
+function renderPosition(){
+  board.position(fens[curPly], false);
+  applyOverlays();
+
+  const hasEvals = evals.length === fens.length && evals[curPly];
+  if (hasEvals){
+    const cp = evals[curPly].cp;
+    $id('evalTxt').textContent = fmtEval(cp);
+    $id('evalbarFill').style.height = winPct(cp) + '%';
+  } else {
+    $id('evalTxt').textContent = '…';
+    $id('evalbarFill').style.height = '50%';
+  }
+
+  $id('moveCounter').textContent = curPly === 0
+    ? 'Posição inicial'
+    : 'Lance ' + curPly + ' de ' + moves.length;
+
+  renderInsight();
+  highlightMoveList();
+  drawGraph();
+}
+
+function renderInsight(){
+  const lbl = $id('insLbl');
+  if (curPly === 0){
+    $id('insMove').textContent = 'Posição inicial';
+    lbl.classList.add('hidden');
+    $id('insTxt').textContent = cls.length
+      ? 'Use as setas ou toque nos lances para navegar.'
+      : 'Analisando a partida…';
+    return;
+  }
+  const i = curPly - 1;
+  $id('insMove').textContent = moveLabel(i);
+  if (!cls.length){
+    lbl.classList.add('hidden');
+    $id('insTxt').textContent = 'Avaliação em andamento…';
+    return;
+  }
+  const c = cls[i];
+  lbl.classList.remove('hidden');
+  lbl.textContent = c.label + ' ' + c.sym;
+  lbl.style.background = c.hex;
+
+  const parts = [];
+  if (c.isMate) parts.push('Xeque-mate!');
+  const pp = Math.round(c.drop);
+  switch(c.key){
+    case 'brilhante': parts.push('Sacrifício que o motor aprova — o material entregue gera compensação concreta.'); break;
+    case 'otimo': parts.push('Ótimo: o melhor lance, punindo o erro do adversário.'); break;
+    case 'melhor': if(!c.isMate) parts.push('O melhor lance da posição segundo o motor.'); break;
+    case 'livro': parts.push('Lance dentro da fase de abertura, sem perda relevante.'); break;
+    case 'excelente': parts.push('Excelente — mantém praticamente todas as chances da posição.'); break;
+    case 'bom': parts.push('Lance sólido, com perda mínima de chances.'); break;
+    case 'imprecisao': parts.push('Imprecisão — as chances de vitória caem cerca de ' + pp + ' pontos percentuais.'); break;
+    case 'erro': parts.push('Erro — as chances de vitória caem cerca de ' + pp + ' pontos percentuais.'); break;
+    case 'gafe': parts.push('Gafe — as chances de vitória desabam ' + pp + ' pontos percentuais.'); break;
+    case 'perdido': parts.push('Oportunidade perdida: o adversário errou e havia continuação bem mais forte.'); break;
+  }
+  const showAlt = ['bom','imprecisao','erro','gafe','perdido'].indexOf(c.key) !== -1;
+  if (showAlt && bestSan[curPly-1]){
+    parts.push('Melhor era ' + bestSan[curPly-1] + '.');
+  }
+  parts.push('Avaliação: ' + fmtEval(evals[curPly-1].cp) + ' → ' + fmtEval(evals[curPly].cp) + '.');
+  $id('insTxt').textContent = parts.join(' ');
+}
+
+function renderMoveList(){
+  const wrap = $id('moveList');
+  wrap.innerHTML = '';
+  for (let i=0; i<moves.length; i+=2){
+    const row = document.createElement('div');
+    row.className = 'mrow';
+    const num = document.createElement('span');
+    num.className = 'mn';
+    num.textContent = (Math.floor(i/2)+1) + '.';
+    row.appendChild(num);
+    for (let k=0; k<2; k++){
+      const idx = i + k;
+      if (idx >= moves.length){ row.appendChild(document.createElement('div')); continue; }
+      const chip = document.createElement('div');
+      chip.className = 'mchip';
+      chip.dataset.ply = idx + 1;
+      if (cls.length){
+        const c = cls[idx];
+        const s = document.createElement('span');
+        s.className = 'ms';
+        s.textContent = c.sym;
+        s.style.background = c.hex;
+        chip.appendChild(s);
+      }
+      const t = document.createElement('span');
+      t.textContent = moves[idx].san;
+      chip.appendChild(t);
+      chip.addEventListener('click', ()=>goTo(idx+1));
+      row.appendChild(chip);
+    }
+    wrap.appendChild(row);
+  }
+  highlightMoveList();
+}
+function highlightMoveList(){
+  document.querySelectorAll('.mchip').forEach(el=>{
+    el.classList.toggle('cur', parseInt(el.dataset.ply,10) === curPly);
+  });
+}
+
+function renderSummary(){
+  $id('wName').textContent = headers.White || 'Brancas';
+  $id('bName').textContent = headers.Black || 'Pretas';
+  $id('wElo').textContent = headers.WhiteElo ? 'Elo ' + headers.WhiteElo : '';
+  $id('bElo').textContent = headers.BlackElo ? 'Elo ' + headers.BlackElo : '';
+  $id('wAcc').textContent = accuracy.w != null ? accuracy.w.toFixed(1) : '–';
+  $id('bAcc').textContent = accuracy.b != null ? accuracy.b.toFixed(1) : '–';
+  const resBits = [];
+  if (headers.Result) resBits.push('Resultado: ' + headers.Result);
+  if (headers.Termination) resBits.push(headers.Termination);
+  if (headers.TimeControl) resBits.push('Ritmo: ' + headers.TimeControl + 's');
+  $id('resLine').textContent = resBits.join(' · ');
+
+  const counts = {};
+  CLS_ORDER.forEach(k => counts[k] = {w:0,b:0});
+  cls.forEach((c,i)=>counts[c.key][moves[i].color]++);
+  const tbl = $id('countsTable');
+  tbl.innerHTML = '<tr><td style="color:var(--muted);font-size:11px;">CLASSIFICAÇÃO</td>' +
+    '<td class="num" style="color:var(--muted);font-size:11px;">♔</td>' +
+    '<td class="num" style="color:var(--muted);font-size:11px;">♚</td></tr>';
+  CLS_ORDER.forEach(k=>{
+    const cw = counts[k].w, cb = counts[k].b;
+    if (cw===0 && cb===0) return;
+    const tr = document.createElement('tr');
+    tr.innerHTML = '<td><span class="sym" style="background:' + CLS[k].hex + '">' + CLS[k].sym + '</span>' +
+      CLS[k].label + '</td><td class="num">' + cw + '</td><td class="num">' + cb + '</td>';
+    tbl.appendChild(tr);
+  });
+}
+
+/* ============ Gráfico ============ */
+function drawGraph(){
+  if (!evals.length || evals.length !== fens.length) return;
+  const cv = $id('graph');
+  const dpr = window.devicePixelRatio || 1;
+  const W = cv.clientWidth, H = cv.clientHeight || 110;
+  cv.width = W * dpr; cv.height = H * dpr;
+  const ctx = cv.getContext('2d');
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,W,H);
+
+  const N = evals.length;
+  const lim = 600;
+  const y = cp => {
+    const c = Math.max(-lim, Math.min(lim, cp >= MATE_BASE-10000 ? lim : (cp <= -(MATE_BASE-10000) ? -lim : cp)));
+    return H/2 - (c/lim)*(H/2 - 6);
+  };
+  const x = j => N <= 1 ? 0 : (j/(N-1))*W;
+
+  ctx.fillStyle = '#241c15';
+  ctx.fillRect(0,0,W,H);
+  // área clara = vantagem das brancas
+  ctx.beginPath();
+  ctx.moveTo(0, y(evals[0].cp));
+  for (let j=1;j<N;j++) ctx.lineTo(x(j), y(evals[j].cp));
+  ctx.lineTo(W, H); ctx.lineTo(0, H);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(241,231,214,0.9)';
+  ctx.fill();
+  // linha do meio
+  ctx.strokeStyle = 'rgba(227,166,78,.5)';
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(0,H/2); ctx.lineTo(W,H/2); ctx.stroke();
+  // marcadores de erro/gafe/brilhante
+  for (let i=0;i<cls.length;i++){
+    const k = cls[i].key;
+    if (k==='gafe' || k==='erro' || k==='brilhante' || k==='otimo'){
+      ctx.beginPath();
+      ctx.arc(x(i+1), y(evals[i+1].cp), 3.2, 0, Math.PI*2);
+      ctx.fillStyle = cls[i].hex;
+      ctx.fill();
+    }
+  }
+  // posição atual
+  ctx.strokeStyle = 'var(--amber)';
+  ctx.strokeStyle = '#e3a64e';
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(x(curPly), 0); ctx.lineTo(x(curPly), H); ctx.stroke();
+}
+
+/* ============ Navegação ============ */
+function goTo(p){
+  curPly = Math.max(0, Math.min(fens.length-1, p));
+  renderPosition();
+}
+function bindNav(){
+  $id('btnFirst').onclick = ()=>goTo(0);
+  $id('btnPrev').onclick = ()=>goTo(curPly-1);
+  $id('btnNext').onclick = ()=>goTo(curPly+1);
+  $id('btnLast').onclick = ()=>goTo(fens.length-1);
+  $id('btnFlip').onclick = ()=>{ board.flip(); applyOverlays(); };
+  document.addEventListener('keydown', e=>{
+    if (!fens.length) return;
+    if (e.key==='ArrowLeft') goTo(curPly-1);
+    else if (e.key==='ArrowRight') goTo(curPly+1);
+    else if (e.key==='Home') goTo(0);
+    else if (e.key==='End') goTo(fens.length-1);
+  });
+  // swipe no tabuleiro
+  let tx = null;
+  const bc = $id('boardCol');
+  bc.addEventListener('touchstart', e=>{ tx = e.touches[0].clientX; }, {passive:true});
+  bc.addEventListener('touchend', e=>{
+    if (tx == null) return;
+    const dx = e.changedTouches[0].clientX - tx;
+    if (dx < -40) goTo(curPly+1);
+    else if (dx > 40) goTo(curPly-1);
+    tx = null;
+  }, {passive:true});
+  // gráfico clicável
+  const gv = $id('graph');
+  const seek = clientX => {
+    const r = gv.getBoundingClientRect();
+    const frac = Math.max(0, Math.min(1, (clientX - r.left)/r.width));
+    goTo(Math.round(frac * (fens.length-1)));
+  };
+  gv.addEventListener('click', e=>seek(e.clientX));
+  gv.addEventListener('touchend', e=>seek(e.changedTouches[0].clientX), {passive:true});
+  let rt = null;
+  window.addEventListener('resize', ()=>{
+    clearTimeout(rt);
+    rt = setTimeout(()=>{ if(board){ board.resize(); board.position(fens[curPly], false); applyOverlays(); drawGraph(); } }, 200);
+  });
+}
+
+/* ============ Fluxo principal ============ */
+const EXAMPLE_PGN = `[Event "Vs. Computer"]
+[Site "Chess.com"]
+[Date "2026-06-09"]
+[White "elfo-170"]
+[Black "Botez"]
+[Result "1-0"]
+[WhiteElo "185"]
+[BlackElo "400"]
+[TimeControl "600"]
+[Termination "elfo-170 won by checkmate"]
+1. d4 g6 2. e3 Na6 3. f4 c6 4. Nd2 d5 5. Bxa6 bxa6 6. Ngf3 a5 7. O-O h5 8. Ne5 Qd6 9. Nxf7 Kxf7 10. f5 gxf5 11. b3 Qxh2+ 12. Kxh2 Rh6 13. Ba3 Bg7 14. e4 c5 15. dxc5 Be5+ 16. g3 Bxa1 17. Qxa1 f4 18. exd5 Ba6 19. Rxf4+ Kg6 20. Qe5 Kh7 21. d6 Re8 22. Ne4 Rd8 23. Rf7+ Kg6 24. Rf4 Bb7 25. Rg4+ hxg4+ 26. Kg1 Ra8 27. dxe7 Rh1+ 28. Kf2 Bxe4 29. Qxe4+ Kh6 30. Qxh1+ Kg7 31. Qxa8 Nxe7 32. c6 Kf6 33. Bxe7+ Kxe7 34. Qxa7+ Kf8 35. c7 Kg7 36. Qa6 Kf7 37. c8=Q Kg7 38. Qxa5 Kg6 39. Qg8+ Kh6 40. Qag5# 1-0`;
+
+function showError(msg){
+  const e = $id('errBox');
+  e.textContent = msg;
+  e.style.display = 'block';
+}
+function hideError(){ $id('errBox').style.display = 'none'; }
+
+async function run(){
+  if (analyzing) return;
+  hideError();
+  const raw = $id('pgnInput').value.trim();
+  if (!raw){ showError('Cole o PGN da partida antes de analisar.'); return; }
+
+  let parsed;
+  try { parsed = parsePgn(raw); }
+  catch(err){ showError(err.message); return; }
+
+  headers = parsed.headers;
+  moves = parsed.moves;
+  fens = parsed.fens;
+  evals = []; cls = []; bestSan = [];
+  accuracy = {w:null, b:null};
+  providerName = null;
+  setEngineChip(null);
+  curPly = 0;
+
+  analyzing = true;
+  $id('btnAnalyze').disabled = true;
+  $id('inputCard').classList.add('hidden');
+  $id('progress').style.display = 'block';
+  $id('results').classList.remove('hidden');
+  $id('summaryCard').classList.add('hidden');
+
+  initBoard();
+  renderMoveList();
+  renderPosition();
+
+  const depth = parseInt($id('depthSel').value, 10);
+  try {
+    await analyze(depth);
+    renderMoveList();
+    renderSummary();
+    $id('summaryCard').classList.remove('hidden');
+    goTo(0);
+  } catch(err){
+    showError('Falha na análise: ' + err.message + '. Verifique a conexão e tente novamente.');
+    $id('inputCard').classList.remove('hidden');
+  } finally {
+    analyzing = false;
+    $id('btnAnalyze').disabled = false;
+    $id('progress').style.display = 'none';
+  }
+}
+
+$id('btnAnalyze').addEventListener('click', run);
+$id('btnExample').addEventListener('click', ()=>{ $id('pgnInput').value = EXAMPLE_PGN; hideError(); });
+$id('btnNew').addEventListener('click', ()=>{
+  $id('results').classList.add('hidden');
+  $id('inputCard').classList.remove('hidden');
+  window.scrollTo({top:0, behavior:'smooth'});
+});
+bindNav();
+</script>
+</body>
+</html>
