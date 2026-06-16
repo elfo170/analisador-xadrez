@@ -225,6 +225,31 @@ let board = null;
 let providerName = null;
 let analyzing = false;
 
+/* ============ Base de aberturas (ECO Lichess) ============ */
+let bookHashes = null;   // Set de hashes FNV-1a das posições teóricas
+function fnv1a(str){
+  let h = 0x811c9dc5;
+  for (let i=0;i<str.length;i++){
+    h ^= str.charCodeAt(i);
+    h = (h + ((h<<1)+(h<<4)+(h<<7)+(h<<8)+(h<<24))) >>> 0;
+  }
+  return h.toString(36);
+}
+function fenKey(fen){ return fen.split(' ').slice(0,4).join(' '); }
+function isBookPosition(fen){
+  if (!bookHashes) return false;
+  return bookHashes.has(fnv1a(fenKey(fen)));
+}
+async function loadBook(){
+  if (bookHashes) return;
+  try {
+    const r = await fetch('data/book.txt', {cache:'force-cache'});
+    if (!r.ok) throw new Error('http '+r.status);
+    const txt = await r.text();
+    bookHashes = new Set(txt.trim().split(','));
+  } catch(e){ bookHashes = new Set(); }  // sem book: nenhum lance marcado como livro
+}
+
 /* ============ Utilidades ============ */
 const $id = id => document.getElementById(id);
 const clampCp = c => Math.max(-1000, Math.min(1000, c));
@@ -421,15 +446,15 @@ function setEngineChip(name){
 
 let localDead = false;
 async function getEval(fen, depth){
-  // motor principal: Stockfish WASM local (determinístico)
+  // motor principal: Stockfish WASM local (determinístico), com MultiPV p/ classificação
   if (!localDead){
     try {
-      const r = await localEval(fen, depth);
+      const r = await localEvalMPV(fen, depth, 3);
       if (providerName !== 'local'){ providerName = 'local'; setEngineChip('local'); }
       return r;
     } catch(e){ localDead = true; }
   }
-  // fallback: APIs externas
+  // fallback: APIs externas (sem MultiPV)
   const order = providerName === 'sf-online'
     ? [['sf-online',evalSfOnline],['chess-api',evalChessApi]]
     : [['chess-api',evalChessApi],['sf-online',evalSfOnline]];
@@ -447,6 +472,7 @@ async function getEval(fen, depth){
 
 /* ============ Análise ============ */
 async function analyze(depth){
+  await loadBook();
   const N = fens.length;
   evals = new Array(N).fill(null);
 
@@ -540,33 +566,58 @@ function isSacrifice(fenAfter, mv){
 function classifyAll(){
   cls = [];
   const mw = (cp, color) => color === 'w' ? winPct(cp) : 100 - winPct(cp);
+
+  // ainda na teoria? Só enquanto a sequência não saiu do book.
+  let stillBook = true;
+
   for (let i=0; i<moves.length; i++){
     const m = moves[i];
-    const wB = mw(evals[i].cp, m.color);     // % de vitória antes (POV de quem jogou)
-    const wA = mw(evals[i+1].cp, m.color);   // % depois
+    const wB = mw(evals[i].cp, m.color);     // % vitória antes (POV de quem jogou)
+    const wA = mw(evals[i+1].cp, m.color);   // % vitória depois
     const drop = Math.max(0, wB - wA);
     const matched = !!(evals[i].best && m.uci === evals[i].best);
     const isMate = new Chess(fens[i+1]).in_checkmate();
     const prev = i >= 1 ? cls[i-1] : null;
     const prevBlunder = prev && (prev.key === 'erro' || prev.key === 'gafe');
 
-    const inBook = (i < 2 && drop < 20) || (i < 10 && drop <= 8);
-    const simpleRecapture = !!(m.captured && i >= 1 && m.to === moves[i-1].to);
+    // Livro: a posição resultante consta da base ECO E a partida não saiu da teoria antes.
+    if (stillBook && isBookPosition(fens[i+1])) {
+      cls.push({key:'livro', label:CLS.livro.label, sym:CLS.livro.sym, hex:CLS.livro.hex,
+                drop:drop, matched:matched, isMate:false});
+      continue;
+    }
+    stillBook = false;
+
+    // Distância (em % de vitória) entre o melhor lance e o segundo melhor, na posição ANTES do lance.
+    // Usado para Brilhante (sacrifício difícil de achar) e para evitar inflar Ótimo.
+    let onlyMoveGap = 0;
+    const linesB = evals[i].lines;
+    if (linesB && linesB.length >= 2){
+      const top = mw(linesB[0].cp, m.color);
+      const second = mw(linesB[1].cp, m.color);
+      onlyMoveGap = Math.max(0, top - second);
+    }
+
+    const sac = isSacrifice(fens[i+1], m);
 
     let c;
     if (isMate) c = CLS.melhor;
-    else if (inBook) c = CLS.livro;
-    else if (isSacrifice(fens[i+1], m) && drop <= 2 && wA >= 30) c = CLS.brilhante;
-    else if (matched && prevBlunder && !simpleRecapture) c = CLS.otimo;
+    // Brilhante: melhor lance, é sacrifício real, mantém a posição (queda baixa) e era difícil de achar
+    else if (matched && sac && drop <= 3 && wA >= 25 && onlyMoveGap >= 8) c = CLS.brilhante;
+    // Ótimo: único bom lance — o melhor lance quando os demais pioram bastante a posição
+    else if (matched && onlyMoveGap >= 12 && drop <= 3) c = CLS.otimo;
+    // Melhor: simplesmente o lance que o motor escolheria
     else if (matched) c = CLS.melhor;
+    // Perdido: estava ganhando após erro do adversário e deixou escapar
     else if (prevBlunder && drop >= 10 && drop < 20) c = CLS.perdido;
-    else if (drop < 2) c = CLS.excelente;
-    else if (drop < 5) c = CLS.bom;
+    else if (drop < 2)  c = CLS.excelente;
+    else if (drop < 5)  c = CLS.bom;
     else if (drop < 10) c = CLS.imprecisao;
     else if (drop < 20) c = CLS.erro;
     else c = CLS.gafe;
 
-    cls.push({key:c.key, label:c.label, sym:c.sym, hex:c.hex, drop:drop, matched:matched, isMate:isMate});
+    cls.push({key:c.key, label:c.label, sym:c.sym, hex:c.hex,
+              drop:drop, matched:matched, isMate:isMate, onlyMove:onlyMoveGap>=12});
   }
 }
 
@@ -679,10 +730,10 @@ function renderInsight(){
   if (c.isMate) parts.push('Xeque-mate!');
   const pp = Math.round(c.drop);
   switch(c.key){
-    case 'brilhante': parts.push('Sacrifício que o motor aprova — o material entregue gera compensação concreta.'); break;
-    case 'otimo': parts.push('Ótimo: o melhor lance, punindo o erro do adversário.'); break;
+    case 'brilhante': parts.push('Brilhante — sacrifício difícil de encontrar que o motor aprova: o material entregue gera compensação decisiva.'); break;
+    case 'otimo': parts.push('Ótimo — praticamente o único lance que mantém a posição; as alternativas piorariam bastante.'); break;
     case 'melhor': if(!c.isMate) parts.push('O melhor lance da posição segundo o motor.'); break;
-    case 'livro': parts.push('Lance dentro da fase de abertura, sem perda relevante.'); break;
+    case 'livro': parts.push('Lance de abertura conhecido (teoria ECO).'); break;
     case 'excelente': parts.push('Excelente — mantém praticamente todas as chances da posição.'); break;
     case 'bom': parts.push('Lance sólido, com perda mínima de chances.'); break;
     case 'imprecisao': parts.push('Imprecisão — as chances de vitória caem cerca de ' + pp + ' pontos percentuais.'); break;
@@ -692,10 +743,27 @@ function renderInsight(){
   }
   const showAlt = ['bom','imprecisao','erro','gafe','perdido'].indexOf(c.key) !== -1;
   if (showAlt && bestSan[curPly-1]){
-    parts.push('Melhor era ' + bestSan[curPly-1] + '.');
+    parts.push('Melhor era ' + bestSan[curPly-1] + (bestLineSan(curPly-1) ? ' (' + bestLineSan(curPly-1) + ')' : '') + '.');
   }
   parts.push('Avaliação: ' + fmtEval(evals[curPly-1].cp) + ' → ' + fmtEval(evals[curPly].cp) + '.');
   $id('insTxt').textContent = parts.join(' ');
+}
+
+// converte a PV (lista de UCI) da posição j em SAN legível, até 4 lances
+function bestLineSan(j){
+  const ev = evals[j];
+  if (!ev || !ev.pv || !ev.pv.length) return '';
+  try {
+    const g = new Chess(fens[j]);
+    const out = [];
+    for (let k=0; k<ev.pv.length && k<4; k++){
+      const u = ev.pv[k];
+      const r = g.move({from:u.slice(0,2), to:u.slice(2,4), promotion:u[4]||undefined});
+      if (!r) break;
+      out.push(r.san);
+    }
+    return out.join(' ');
+  } catch(e){ return ''; }
 }
 
 function renderMoveList(){
